@@ -1,0 +1,40 @@
+{
+  "_provenance": {
+    "events": "Which hook events HORME knows about. install.py wires those with detect:true plus SessionStart. HORME emits context on PostToolBatch, Stop and SubagentStop, and each of those can return hookSpecificOutput.additionalContext according to the public hooks reference as checked on 2026-11-13. Plain stdout from most events, PostToolUse included, goes to the debug log. An earlier version of this note said PostToolUse could not add context at all; the reference does not support that.",
+    "limits": "Every injection spends tokens in the session it is trying to help. Silence is the default; these caps make it the overwhelming default."
+  },
+  "events": {
+    "PostToolBatch": {
+      "detect": true,
+      "why": "The mid-loop intervention point: fires after a batch of tool calls, before the next model call."
+    },
+    "Stop": {
+      "detect": true,
+      "why": "The about-to-give-up point. HORME never returns exit 2 and never returns decision:block. According to the public hooks reference (read 2026-11-13), context returned on Stop is non-error feedback: the conversation continues so that Claude can act on it, under Claude Code's own loop protections and HORME's caps below."
+    },
+    "SubagentStop": {
+      "detect": true,
+      "why": "Same event for a subagent. The engine reads the file named by transcript_path and drops sidechain lines, so it does not read the subagent's own lines."
+    },
+    "SessionStart": {
+      "detect": false,
+      "why": "Used only to prune stale session state. There is no block to diagnose before any work has happened."
+    },
+    "UserPromptSubmit": {
+      "detect": false,
+      "why": "Not wired by default. When the human is speaking, their instruction is better guidance than HORME's, and injecting here doubles the context cost for no diagnosis the tool events do not already make. Set detect:true and re-run install.py to wire it."
+    }
+  },
+  "limits": {
+    "max_per_session": 4,
+    "min_seconds_between": 90,
+    "max_per_episode": 1,
+    "state_ttl_days": 7,
+    "_why_max_per_episode": "One block, one intervention. Praise helps only when it reads as sincere (Henderlong & Lepper 2002), and praise aimed at the person is among the least effective kinds of feedback (Hattie & Timperley 2007). That repetition makes encouragement read as insincere is this project's inference from those two."
+  },
+  "kill_switch": {
+    "env": "CHEERLEADER_DISABLE (HORME_DISABLE still honoured)",
+    "file": "~/.claude/cheerleader/DISABLED",
+    "why": "A hook that cannot be turned off without editing global settings is a hook that will be resented."
+  }
+}

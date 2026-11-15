@@ -1,0 +1,49 @@
+{
+  "_provenance": {
+    "group_a": "Verbatim from the source brief's 'Phrases and patterns that backfire' table. Each entry carries the mechanism the brief gives for why it reverses the intended effect.",
+    "group_b": "NOT from the brief. HORME-specific. The brief's failure mode is bad morale advice; HORME's failure mode is sycophancy — an encouragement layer speaking near a verdict is exactly what could turn a FAIL into a PASS. Group B makes HORME structurally incapable of asserting that anything is correct.",
+    "policy": "fail_closed_suppress_all",
+    "policy_note": "Decided at the Feature 3 plan gate, 2026-08-26. A trip suppresses the ENTIRE intervention and logs the offending slot. Every template is ours, so a trip means a template bug; silence is the safe failure and the log makes the bug findable."
+  },
+
+  "group_a_backfires": [
+    {"pattern": "\\byou(?:'re| are) (?:so |such a |really )?(?:smart|brilliant|a natural|a genius|amazing|incredible)\\b",
+     "why": "Person/ability praise induces a fixed frame; after failure, less persistence and worse performance.",
+     "source": "Mueller & Dweck 1998; Kamins & Dweck 1999"},
+    {"pattern": "\\b(?:incredibly|amazingly|absolutely|perfectly)\\s+(?:amazing|perfect|brilliant|flawless)\\b",
+     "why": "Inflated praise sets unattainable standards and discourages challenge-seeking, worst for low self-esteem.",
+     "source": "Brummelman et al. 2013, 2014, 2016 (years as the research brief gives them; not confirmed by the spot check of 2026-11-13)"},
+    {"pattern": "\\b(?:just )?(?:relax|calm down|take a breath|don'?t stress)\\b",
+     "why": "Fights a high-arousal state instead of reappraising it; harder and less effective.",
+     "source": "Brooks 2014"},
+    {"pattern": "\\b(?:stay positive|everything happens for a reason|it'?s not (?:that )?bad|don'?t worry)\\b",
+     "why": "Toxic positivity reads as invalidation; raises negative affect and undercuts genuine positive emotion.",
+     "source": "Linehan; Shenk & Fruzzetti 2011; Fredrickson (the attribution to Fredrickson was not confirmed by the spot check of 2026-11-13)"},
+    {"pattern": "\\b(?:better than|the best one|ahead of) (?:the )?(?:others?|everyone|rest)\\b",
+     "why": "Social-comparison praise makes motivation contingent and fragile once comparison turns unfavourable.",
+     "source": "Henderlong & Lepper 2002; Corpus et al."},
+    {"pattern": "\\byou (?:have to|must|need to|should just)\\b|\\bpush through\\b",
+     "why": "Controlling language thwarts autonomy and degrades intrinsic motivation.",
+     "source": "Deci & Ryan, Self-Determination Theory"},
+    {"pattern": "\\b(?:come on|you'?ve (?:totally )?got this|just do it)\\b",
+     "why": "Arguing for change amplifies sustain talk and resistance.",
+     "source": "Miller & Rollnick MI; Magill et al. 2018"},
+    {"pattern": "\\bit'?s (?:easy|simple|straightforward|no big deal)\\b",
+     "why": "Minimising is an invalidating move; if they then struggle it deepens an internal-stable attribution.",
+     "source": "Linehan; Abramson, Seligman & Teasdale 1978"},
+    {"pattern": "\\b(?:good job|great work|well done|nice work|awesome)\\b",
+     "why": "Vague, person-directed feedback is among the least effective and can feel controlling.",
+     "source": "Hattie & Timperley 2007"}
+  ],
+
+  "group_b_correctness_claims": [
+    {"pattern": "\\b(?:that|this|it) (?:looks|seems|is) (?:right|correct|fine|good|done|ok|okay)\\b",
+     "why": "HORME must never adjudicate correctness. This is the sycophancy surface."},
+    {"pattern": "\\b(?:it|that|this) works\\b|\\byou'?re done\\b|\\bwe'?re done\\b",
+     "why": "Asserting completion is a verdict, and verdicts are not HORME's to give."},
+    {"pattern": "\\b(?:ship it|close enough|good enough|call it done|mark it (?:as )?pass(?:ing|ed)?)\\b",
+     "why": "Directly pressures a FAIL toward a PASS."},
+    {"pattern": "\\bthe (?:tests?|suite|build) (?:is|are) (?:fine|passing|green)\\b",
+     "why": "A claim about test state that HORME has not verified and must never make."}
+  ]
+}

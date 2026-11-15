@@ -1,0 +1,77 @@
+{
+  "_provenance": {
+    "source": "Unpublished research brief (not included in this repository), 'Phrases and patterns that work' table plus Stages 2-6 of its Recommendations.",
+    "register": "Warm but restrained, decided at intake 2026-08-26. Sincere, specific, process-focused. Severity escalates the AMOUNT OF SCAFFOLDING, never the amount of enthusiasm.",
+    "specificity": "Templates must name the actual file or error signature. The brief is explicit that specific beats global; a template that only says 'this' is a template bug.",
+    "autonomy_scope": "Approach only. No template may offer a choice about whether to continue the work.",
+    "repetition": "The full {what} string is emitted at most ONCE per intervention; later slots use {what_short}. Repeating the same specific phrase three times reads as generated text. That this undercuts sincerity is this project's inference; that praise helps only when it reads as sincere is Henderlong & Lepper 2002."
+  },
+  "slots": {
+    "validate": {
+      "source": "Stage 2 / Key Finding 1 — validate before you problem-solve (Linehan; Shenk & Fruzzetti 2011). Normalise the struggle without minimising or catastrophising it.",
+      "templates": [
+        "This one is genuinely hard. {n_fail} attempts against the same failure is a normal shape for a problem like this.",
+        "Being stuck here is a reasonable place to be — {what} is behaving in a way the obvious reading does not predict."
+      ]
+    },
+    "relabel": {
+      "source": "Abramson, Seligman & Teasdale 1978 — recast the cause as specific, temporary and controllable rather than internal, stable and global. Dweck's 'yet' framing.",
+      "templates": [
+        "What is stuck is specific: {what}. That is one step, not the design, and it has not been cracked yet.",
+        "The block is {what} — narrow, and not yet solved. That is a fact about the attempts so far, not about the ceiling."
+      ]
+    },
+    "progress": {
+      "source": "Amabile & Kramer 2011 — the progress principle: small wins on meaningful work are the strongest daily driver of motivation.",
+      "templates": [
+        "For context: {n_ok} of the last {n_tools} steps in this window landed cleanly, so the failure is isolated to {what}.",
+        "The surface has narrowed — {n_ok} of {n_tools} recent steps came back clean, leaving {what}."
+      ]
+    },
+    "decompose": {
+      "source": "Bandura & Schunk 1981 — proximal subgoals beat distal goals on self-efficacy and skill. 'What is the very next step' is the mechanism, not a nicety.",
+      "templates": [
+        "Smallest next move: {move}."
+      ]
+    },
+    "autonomy": {
+      "source": "Deci & Ryan SDT; Reeve & Cheon 2021 — non-pressuring language and genuine choice sustain intrinsic motivation. Scope limited to approach by decision at the F3 plan gate.",
+      "templates": [
+        "You could {move_a}, or {move_b} — either is a reasonable route.",
+        "Two routes worth considering: {move_a}, or {move_b}."
+      ],
+      "_note": "move_a and move_b are allocated distinctly from the move decompose already stated, and if_then gets move_c. No slot ever restates another slot's step."
+    },
+    "if_then": {
+      "source": "Gollwitzer implementation intentions; Oettingen mental contrasting (WOOP) — pre-commit a concrete response to the named obstacle.",
+      "templates": [
+        "If the next run shows the same failure again, then {move_c}, rather than repeating the last change."
+      ]
+    },
+    "stand_down": {
+      "source": "Recommendations, Thresholds that change the plan — do not encourage sunk-cost persistence on an unachievable goal. Deliberately contains no encouragement vocabulary and no 'yet'.",
+      "templates": [
+        "The environment is blocking this, not the approach: {what}, {n_fail} times. More attempts will not change that. State what would be needed, or take the route that does not require it."
+      ]
+    }
+  },
+  "moves": {
+    "_note": "Each crossed signal maps to a concrete next action. Deterministic: the move is chosen by which signal crossed, never invented.",
+    "repeated_error_count": "print the actual value the assertion is comparing before the next edit, so the next change is driven by data rather than a guess",
+    "current_error_run": "reproduce the failure in isolation, outside the full run, so the loop gets shorter",
+    "edit_thrash": "stop editing {file} and read the failure end to end once — {n_edits} edits have not changed the shape of the error",
+    "command_repeat": "change the command rather than the code — the same invocation has run {n_cmd} times for the same result",
+    "reread_thrash": "write down what is already known about {file} instead of reading it again",
+    "calls_since_success": "shrink the target: get one smaller assertion passing before the full case",
+    "consecutive_tool_errors": "take the last error literally and address only what it names, nothing else",
+    "env_blocked_errors": "name the missing dependency and pick the path that does not need it"
+  },
+  "fallback_moves": {
+    "_note": "Used when the crossed signals yield fewer concrete moves than the emitted slots need. Generic but real, and never a repeat of a move already stated.",
+    "moves": [
+      "reproduce the failure in isolation, outside the full run",
+      "state the smallest assertion that should pass and target only that",
+      "re-read the failure output end to end before making another change"
+    ]
+  }
+}

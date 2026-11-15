@@ -1,0 +1,22 @@
+{
+  "_provenance": {
+    "derived_from": "~/.claude/projects",
+    "limitation": "The corpus is UNLABELLED. Treating it as healthy is an assumption, and some of these sessions certainly contained genuinely stuck episodes. That biases every threshold upward, so HORME errs toward silence rather than noise. This is the intended direction, but it is an assumption, not a finding.",
+    "note": "Thresholds are MEASURED, never hand-typed. Regenerate with tools/calibrate.py --write after any change to signals.py.",
+    "rule": "threshold = p99(worst windowed value in a healthy session) + 1, floor 2",
+    "sessions_scanned": 438,
+    "sessions_used": 59,
+    "window_tool_calls": 40
+  },
+  "thresholds": {
+    "calls_since_success": 3,
+    "capitulation_hits": 3,
+    "command_repeat": 11,
+    "consecutive_tool_errors": 4,
+    "current_error_run": 3,
+    "edit_thrash": 25,
+    "env_blocked_errors": 3,
+    "repeated_error_count": 5,
+    "reread_thrash": 9
+  }
+}

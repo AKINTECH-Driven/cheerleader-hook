@@ -1,0 +1,34 @@
+test_merge (tests.test_importer.TestImporter) ... FAIL
+test_merge_documented (tests.test_importer.TestImporter)
+A merged span must expand to four cells. ... FAIL
+test_split (tests.test_importer.TestImporter) ... ok
+test_sub (tests.test_importer.TestImporter) ... 
+======================================================================
+FAIL: test_merge (tests.test_importer.TestImporter)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/proj/tests/test_importer.py", line 7, in test_merge
+    self.assertEqual(1, 4)
+AssertionError: 1 != 4
+
+======================================================================
+FAIL: test_merge_documented (tests.test_importer.TestImporter)
+A merged span must expand to four cells.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/proj/tests/test_importer.py", line 11, in test_merge_documented
+    self.assertEqual(1, 4)
+AssertionError: 1 != 4
+
+======================================================================
+FAIL: test_sub (tests.test_importer.TestImporter) (i=2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/proj/tests/test_importer.py", line 19, in test_sub
+    self.assertEqual(i, 1)
+AssertionError: 2 != 1
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=3)

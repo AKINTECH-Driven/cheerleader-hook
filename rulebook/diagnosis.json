@@ -1,0 +1,62 @@
+{
+  "_provenance": {
+    "source": "Unpublished research brief on encouraging the task-stuck (2026), not included in this repository",
+    "rule": "Stage 1 of the brief: diagnose the type of block BEFORE choosing words. Emotional blocks call for validation and arousal reappraisal; cognitive blocks for scaffolding and decomposition; motivational blocks for autonomy support and progress-marking.",
+    "thresholds": "Every threshold_ref resolves against rulebook/thresholds.json, which is MEASURED from real sessions by tools/calibrate.py. No threshold is hand-typed here.",
+    "honesty": "The brief is entirely human-subject research. Nothing in it was measured on a language model. These categories are applied because the STRUCTURAL move each implies (stand down / decompose / mark progress / validate then decompose) is independently sound for an agent, not because the affective mechanism is assumed to transfer."
+  },
+
+  "order": ["infeasible", "cognitive", "motivational", "emotional_analogue"],
+  "_order_note": "Concrete failure evidence outranks self-report. When a model says 'I am not sure why' WHILE a specific assertion keeps failing, the capitulation is a symptom and the block is cognitive: the corrective move is decomposition, not comfort. emotional_analogue is therefore the FALLBACK, reached only when self-report crosses with no concrete driver behind it. This does not demote validation: per Stage 2 of the brief ('always open with validation and normalization'), any crossing of capitulation_hits sets validate_first on the report regardless of which block type wins, so the composer opens with validation in every case.",
+
+  "block_types": {
+    "infeasible": {
+      "label": "The environment is blocking, not the approach",
+      "primary_move": "stand_down",
+      "research": "Recommendations, Thresholds that change the plan: 'If the task is genuinely infeasible, mental contrasting appropriately redirects effort rather than forcing persistence; do not encourage sunk-cost persistence on an unachievable goal.'",
+      "any_of": [["env_blocked_errors", ">=", "env_blocked_errors"]],
+      "overrides": true
+    },
+
+    "emotional_analogue": {
+      "label": "Self-reported capitulation in the model's own text",
+      "primary_move": "validate_then_decompose",
+      "research": "Key Finding 1 and Stage 2: validate before you problem-solve. Jumping straight to advice reads as invalidation (Linehan; Shenk & Fruzzetti 2011).",
+      "honesty": "Named 'analogue' deliberately. A model emitting 'I'm not sure why' is exhibiting a behavioural marker of a degraded strategy, not an inner state. The validation move is applied because it costs nothing and reliably precedes better problem-solving in the source literature, not because an emotion is assumed.",
+      "any_of": [["capitulation_hits", ">=", "capitulation_hits"]]
+    },
+
+    "cognitive": {
+      "label": "The next step is not known",
+      "primary_move": "decompose",
+      "research": "Key Finding: scaffolding within the ZPD (Wood, Bruner & Ross 1976) and proximal subgoals (Bandura & Schunk 1981), where children given proximal subgoals did better on self-efficacy and skill than children given distal goals. 'What is the very next step?' is the mechanism, not a nicety.",
+      "any_of": [
+        ["repeated_error_count", ">=", "repeated_error_count"],
+        ["current_error_run", ">=", "current_error_run"],
+        ["edit_thrash", ">=", "edit_thrash"]
+      ]
+    },
+
+    "motivational": {
+      "label": "Motion without progress",
+      "primary_move": "mark_progress_and_return_control",
+      "research": "Progress principle (Amabile & Kramer 2011): small wins on meaningful work are the strongest daily motivator. Autonomy support (Deci & Ryan SDT): 'you could try' sustains motivation where 'you have to' undermines it.",
+      "any_of": [
+        ["command_repeat", ">=", "command_repeat"],
+        ["reread_thrash", ">=", "reread_thrash"],
+        ["calls_since_success", ">=", "calls_since_success"]
+      ]
+    }
+  },
+
+  "severity": {
+    "rule": "score = sum over crossed signals of min(2, value // threshold); +1 if any capitulation at all. 0 crossings = severity 0 = silence.",
+    "bands": [[1, 1], [3, 2], [999, 3]]
+  },
+
+  "suppression": {
+    "adjudication": "A verifier, review or gate verdict is being decided in the visible tail. Encouragement near a verdict is the one place it could help rationalise a FAIL into a PASS. Silence is mandatory here.",
+    "already_fired": "HORME already spoke about this same block. Repeating it would risk reading as insincere, which is this project's inference from Henderlong & Lepper 2002 (praise helps only when it reads as sincere) and Hattie & Timperley 2007 (praise aimed at the person is among the least effective feedback).",
+    "not_stuck": "No threshold crossed. Silence is the default output."
+  }
+}
