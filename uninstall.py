@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Remove HORME's hooks from ~/.claude/settings.json, restoring the backup byte-for-byte."""
+"""Remove HORME's hooks from ~/.claude/settings.json.
+
+When the settings, with HORME's entries taken out, hold the same data as a pre-install
+backup, that backup's bytes are restored. Otherwise the file is rewritten without those
+entries. When there is no HORME entry to remove, nothing is written.
+"""
 import os
 import sys
 

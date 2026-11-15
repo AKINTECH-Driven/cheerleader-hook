@@ -11,7 +11,7 @@ The skill is named `cheerleader`. The engine and its Python package are named `h
 Experimental. Read this section and "Known limitations" before you install it.
 
 - **No efficacy claim.** Nothing here measures whether the intervention helps a model get unstuck. That needs a controlled trial against a no-hook baseline, and none has been run.
-- **Not yet exercised in a live session.** Every run so far was a process-level run on fixtures and recorded transcripts. The hook input field names and the output shape come from the public hooks documentation, not from observation. `hooks/horme_probe.py` exists to capture real payloads and settle the input side.
+- **No session on record shows the hook running live.** The record is the author's own Claude Code session transcripts, and it cannot show a run that left no transcript. It does show the engine run by hand on live sessions: through the skill, four times, each on the transcript of the session that asked for it, in three working sessions of a Lean 4 proof project between 26 August and 12 September 2026 (UTC). Each time it measured the session, found it not stuck and said nothing, so no session on record has received an intervention. Those runs used the build of August 2026, not this release. As a hook wired into Claude Code, every run on record was a process-level run on fixtures and recorded transcripts. The hook input field names and the output shape come from the public hooks documentation, not from observation. `hooks/horme_probe.py` exists to capture real payloads and settle the input side.
 - **Thresholds come from one person's sessions.** See "How it decides".
 - **One machine.** It has only been run on macOS with Python 3.9.
 
@@ -97,7 +97,7 @@ python3 tools/calibrate.py --write    # regenerate rulebook/thresholds.json
 
 `tools/` is in the repository and in an export built with `--with-tests`.
 
-Calibration is also what killed the first design. The first calibration run found the same file edited a median of 12 times per session, so whole-session counts are worthless as evidence of thrash. That is why every signal is windowed. The figure is recorded in the build log and cannot be reproduced from this repository, since the corpus is not part of it.
+Calibration is also what killed the first design. The first calibration run found the same file edited a median of 12 times per session, so whole-session counts are worthless as evidence of thrash. That is why every signal is windowed. The figure comes from the output of that run, in the build session of 26 August 2026: the median, over the sessions it used, of how often the most-edited file of a session was edited. It is not recorded in the build log and cannot be reproduced from this repository, since the corpus is not part of it.
 
 ## What it reads and writes
 

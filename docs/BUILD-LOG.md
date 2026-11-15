@@ -13,6 +13,8 @@
 
 ## Checkpoint log
 <!-- One line per checkpoint: type(scope): summary · tests N/N · PASS|FAIL -->
+- C13 · docs(review): review before publication, nothing private found, the live-use statement supported by the records and reworded to say so, wordings corrected · tests 294/294 · PASS (six seats, each finding read a second time) · mutants not run again
+- C12 · docs(readme): the status line on live use corrected from the session records, no code change · tests 294/294 · PASS · mutants not run again
 - C11 · docs(release): the origin of the research brief stated, two attributions marked as unconfirmed · tests 294/294 · PASS · mutants 151/151
 - C10 · feat(signals): any lower-case name ending in -guard is a gate, found in linear time; citations and hook notes corrected in the rulebooks · tests 294/294 · PASS WITH NOTES (one verifier round, two seats) · mutants 151/151
 - C9 · docs(skill): the source README and SKILL carry the reviewed wording, a test holds both to what is measured, dist rebuilt · tests 288/288 · PASS WITH NOTES (one review round, two seats) · mutants 140/140
@@ -492,3 +494,67 @@ file sees it without the README. Only the two `source` texts changed: no rule, a
 the code reads.
 
 Final: 294/294 tests, **151/151 mutants caught**.
+
+### C12 · What the session records say about live use, 2026-11-15
+The README said the tool had not yet been exercised in a live session. The owner pointed
+out that it had been used, so the session records were read to see how.
+
+**What they show.** The session transcripts recorded on the author's machine were scanned
+by script, the session doing this release left out.
+
+- Through the skill the engine was run by hand four times, each time on the transcript of
+  the session that asked for it: on 26 and 29 August and on 1 and 12 September 2026 (UTC),
+  in three working sessions of a Lean 4 proof project. Each run measured the session,
+  reported `SILENT: not_stuck` and returned an empty answer.
+- No transcript records the hook script being executed by Claude Code, and it is not in the
+  settings file today. The one file the probe wrote is a made-up payload from the build.
+
+**What changed.** One line under Status in the README. It now says that the hook has not
+run in a live session, that the engine has, by hand, four times, and that it stayed silent
+each time, on the build of August 2026. No code, no test and no rulebook changed.
+
+The scan scripts and their output are kept with the release tooling, outside this
+repository.
+
+Final: 294/294 tests. Nothing the mutants act on changed, so they were not run again.
+
+### C13 · The review before publication, 2026-11-15
+Six seats read the tree that was about to be published, none of them the builder. Three
+read it for anything private: the code and rulebooks, the tests and fixtures, and a
+scripted sweep of all 62 files and of the commit. One read the seven documents. Two checked
+the new statement on live use against the session records, by different methods. Each
+finding then went to a second reader whose job was to refute it. A last seat read only the
+lines that changed after that.
+
+**Private material.** None found. The fixtures are synthetic, the tree holds no address,
+account name, home path, session id or credential, and the history held the single commit
+of the first release.
+
+**The statement on live use.** Both seats went through every recorded transcript, those of
+subagents included, and supported every clause: four by-hand runs through the skill in
+three sessions, each on its own transcript, each silent, on the August build, and no record
+of Claude Code executing the hook script. What the records cannot show is a run that left
+no transcript. The last seat pointed out that the README stated this as what happened, not
+as what the record shows, so the status line now speaks of the record.
+
+**Wordings corrected.**
+- `uninstall.py` said in its docstring that it restores the backup byte for byte. It does
+  that only when the settings, without its own entries, hold the same data as a backup.
+  Otherwise it rewrites the file without those entries, and it writes nothing when it has
+  no entry to remove. The docstring says that now.
+- The README said that the figure from the first calibration run is recorded in this log.
+  It is not. It comes from the output of that run in the build session of 26 August 2026,
+  and the README says so now.
+- One sentence of the C12 entry above was shortened: it gave the size and date range of the
+  author's transcript store, which nothing here needs.
+
+Set aside by the second readers, and left as they are: process words that the note at the
+top of this log explains, a test comment that uses one, the default `~/.claude/projects`
+named in the calibration provenance, and the `dist/` folder this log mentions, which is not
+part of the published tree. A note on the address of the local git remote was checked by
+hand: it is the plain repository address.
+
+The wording changes made after the last seat's report were checked by the builder against
+the code and the records, not read again by an independent seat.
+
+Final: 294/294 tests. One docstring and two documents changed, nothing the mutants act on.
