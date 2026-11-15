@@ -1,9 +1,10 @@
 import json
 import os
 import shutil
+import stat
 import tempfile
 import unittest
-from _ctx import fx  # noqa: F401
+from _ctx import fx, within  # noqa: F401
 from horme import state
 
 
@@ -155,6 +156,122 @@ class TestSaveSaysWhetherItWorked(unittest.TestCase):
             s['extra'] = odd
             self.assertIs(state.save('sess-odd', s), True, 'not saved with %r in the state' % (odd,))
             self.assertEqual(state.load('sess-odd')['fired_total'], 1)
+
+
+class TestTheSessionLock(unittest.TestCase):
+    """Two runs that start together each used to read a state that had heard nothing, and
+    each spoke. A run now takes the session's lock, without waiting, before it reads the
+    state for the last time."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix='horme-lock-')
+        self._orig = state.STATE_DIR
+        state.STATE_DIR = os.path.join(self.dir, 'state')
+        self.held = []
+
+    def tearDown(self):
+        for lock in self.held:
+            state.release(lock)
+        state.STATE_DIR = self._orig
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def claim(self, session_id):
+        lock, why = state.claim(session_id)
+        self.held.append(lock)
+        return lock, why
+
+    def test_a_run_can_take_it(self):
+        lock, why = self.claim('sess-1')
+        self.assertIsNotNone(lock)
+        self.assertIsNot(lock, state.NO_LOCK, 'this platform has fcntl, so a real lock is expected')
+        self.assertEqual(why, '')
+
+    def test_the_lock_file_is_empty_and_private(self):
+        mask = os.umask(0)                  # so that the mode asked for is the mode it gets
+        try:
+            self.claim('sess-1')
+        finally:
+            os.umask(mask)
+        info = os.stat(state._path('sess-1') + '.lock')
+        self.assertEqual(info.st_size, 0)
+        self.assertEqual(stat.S_IMODE(info.st_mode), 0o600, 'others can read or write the lock file')
+
+    def test_a_second_run_finds_it_taken_and_does_not_wait(self):
+        first, _why = self.claim('sess-1')
+        self.assertIsNotNone(first)
+        self.assertEqual(within(5, lambda: self.claim('sess-1')), (None, 'state_busy'))
+
+    def test_it_is_free_again_once_given_back(self):
+        first, _why = self.claim('sess-1')
+        state.release(first)
+        again, why = self.claim('sess-1')
+        self.assertIsNotNone(again, why)
+
+    def test_another_session_is_not_held_up(self):
+        self.claim('sess-a')
+        other, why = self.claim('sess-b')
+        self.assertIsNotNone(other, why)
+
+    def test_it_answers_unwritable_when_the_lock_file_cannot_be_made(self):
+        with open(state.STATE_DIR, 'w') as fh:
+            fh.write('a file where the state folder should be')
+        self.assertEqual(self.claim('sess-1'), (None, 'state_unwritable'))
+
+    def test_it_answers_and_does_not_raise_for_a_session_id_it_cannot_read(self):
+        class Unreadable(object):
+            def __str__(self):
+                raise RuntimeError('no name')
+        self.assertEqual(self.claim(Unreadable()), (None, 'state_unwritable'))
+
+    def test_without_fcntl_nothing_is_locked_and_nothing_is_refused(self):
+        kept = state.fcntl
+        state.fcntl = None
+        try:
+            first, second = state.claim('sess-1'), state.claim('sess-1')
+            state.release(first[0])
+        finally:
+            state.fcntl = kept
+        self.assertEqual(first, (state.NO_LOCK, ''))
+        self.assertEqual(second, (state.NO_LOCK, ''))
+        self.assertFalse(os.path.exists(state.STATE_DIR), 'a lock file was made where no lock can be taken')
+
+    def test_release_takes_whatever_claim_returned_and_a_second_call_does_nothing(self):
+        lock, _why = state.claim('sess-1')
+        for what in (None, state.NO_LOCK, lock):
+            state.release(what)
+        other = os.open(os.devnull, os.O_RDONLY)     # may get the number the lock had
+        try:
+            state.release(lock)
+            os.fstat(other)                          # raises if the second call closed it
+        finally:
+            os.close(other)
+
+    def test_a_hostile_session_id_cannot_put_the_lock_file_elsewhere(self):
+        self.claim('../../etc/passwd')
+        self.assertEqual(len(os.listdir(state.STATE_DIR)), 1)
+        self.assertEqual(os.listdir(self.dir), ['state'])
+
+    def test_a_lock_that_is_in_use_is_not_pruned(self):
+        """prune() goes by the file's date. An old lock file that was pruned while a run
+        held it would let a second run take a second lock on a new file."""
+        first, _why = state.claim('sess-1')
+        state.release(first)
+        path = state._path('sess-1') + '.lock'
+        os.utime(path, (0, 0))
+        self.claim('sess-1')
+        state.prune(ttl_days=7)
+        self.assertTrue(os.path.exists(path), 'a lock that was held was pruned')
+        self.assertEqual(within(5, lambda: self.claim('sess-1')), (None, 'state_busy'))
+
+    def test_the_lock_file_is_not_the_state_and_is_pruned_with_it(self):
+        lock, _why = self.claim('sess-1')
+        self.assertEqual(state.load('sess-1'), state.blank())
+        state.release(lock)
+        path = state._path('sess-1') + '.lock'
+        self.assertTrue(os.path.isfile(path))
+        os.utime(path, (0, 0))
+        state.prune(ttl_days=7)
+        self.assertFalse(os.path.exists(path))
 
 
 class TestRateLimits(unittest.TestCase):

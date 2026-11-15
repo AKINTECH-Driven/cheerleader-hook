@@ -351,14 +351,32 @@ def run(raw_stdin, argv=None, now=None):
                                  % json.dumps([v.get('pattern') for v in iv.violations]))
             return 0, '{}', (_explain_lines(pay, sig, report, iv, reason) if explain else [])
 
-        state.record_fire(st, report.episode_id, now=now)
-        if state.save(pay.session_id, st) is not True:
-            # The firing could not be recorded, so the next event would find a session
-            # that has heard nothing and could speak again. Say nothing instead.
-            reason = 'state_unwritable'
-            _say_on_stderr('%s state could not be saved, intervention withheld: %s'
-                           % (brand.LABEL, state.STATE_DIR))
+        # Everything above read the state without a lock. Runs that start together all get
+        # this far, so the state is read once more under the session's lock, and the lock
+        # is kept until the firing is saved.
+        lock, why = state.claim(pay.session_id)
+        if lock is None:
+            reason = why
+            if why != 'state_busy':
+                _say_on_stderr('%s state could not be saved, intervention withheld: %s'
+                               % (brand.LABEL, state.STATE_DIR))
             return 0, '{}', (_explain_lines(pay, sig, report, None, reason) if explain else [])
+        try:
+            st = state.load(pay.session_id)
+            allowed, why = state.rate_limit(st, report.episode_id, now=now)
+            if not allowed:
+                reason = why
+                return 0, '{}', (_explain_lines(pay, sig, report, None, reason) if explain else [])
+            state.record_fire(st, report.episode_id, now=now)
+            if state.save(pay.session_id, st) is not True:
+                # The firing could not be recorded, so the next event would find a session
+                # that has heard nothing and could speak again. Say nothing instead.
+                reason = 'state_unwritable'
+                _say_on_stderr('%s state could not be saved, intervention withheld: %s'
+                               % (brand.LABEL, state.STATE_DIR))
+                return 0, '{}', (_explain_lines(pay, sig, report, None, reason) if explain else [])
+        finally:
+            state.release(lock)
         return 0, _emit(pay.event, iv), (_explain_lines(pay, sig, report, iv, '') if explain else [])
 
     except Exception as exc:                 # never take the session down with us

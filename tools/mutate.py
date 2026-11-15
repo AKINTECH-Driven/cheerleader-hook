@@ -87,17 +87,17 @@ MUTANTS = [
     ('cli.py', "    except Exception as exc:                 # never take the session down with us",
      "    except ZeroDivisionError as exc:  # MUTANT: exceptions escape",
      'a hook must never crash the session it is helping'),
-    ('cli.py', "        state.record_fire(st, report.episode_id, now=now)\n        if state.save(pay.session_id, st) is not True:",
-     "        if False:  # MUTANT: firing not persisted",
+    ('cli.py', "            state.record_fire(st, report.episode_id, now=now)\n            if state.save(pay.session_id, st) is not True:",
+     "            if False:  # MUTANT: firing not persisted",
      'a firing must be persisted or it will repeat forever'),
-    ('cli.py', "        if state.save(pay.session_id, st) is not True:",
-     "        state.save(pay.session_id, st)\n        if False:  # MUTANT: speaks whether or not the firing was recorded",
+    ('cli.py', "            if state.save(pay.session_id, st) is not True:",
+     "            state.save(pay.session_id, st)\n            if False:  # MUTANT: speaks whether or not the firing was recorded",
      'a firing that could not be recorded must not be given'),
-    ('cli.py', "        if state.save(pay.session_id, st) is not True:",
-     "        if not state.save(pay.session_id, st):  # MUTANT: any truthy answer counts",
+    ('cli.py', "            if state.save(pay.session_id, st) is not True:",
+     "            if not state.save(pay.session_id, st):  # MUTANT: any truthy answer counts",
      'only a save that answers True is a recorded firing'),
-    ('cli.py', "            reason = 'state_unwritable'\n",
-     "            reason = ''  # MUTANT: the silence is not explained\n",
+    ('cli.py', "                reason = 'state_unwritable'\n",
+     "                reason = ''  # MUTANT: the silence is not explained\n",
      'a withheld intervention must name its reason'),
     ('state.py', "            return fh.read() == text\n",
      "            return True  # MUTANT: not read back\n",
@@ -117,6 +117,44 @@ MUTANTS = [
     ('cli.py', "            sys.stderr = open(os.devnull, 'w')\n",
      "            pass  # MUTANT: the unwritten line stays in the buffer\n",
      'a line that cannot be written must not change the exit status'),
+    ('cli.py', "        if lock is None:\n            reason = why\n",
+     "        if False:  # MUTANT: a held lock is ignored\n            reason = why\n",
+     'a run must say nothing while another run holds the session lock'),
+    ('cli.py', "            st = state.load(pay.session_id)\n            allowed, why = state.rate_limit(st, report.episode_id, now=now)\n            if not allowed:",
+     "            allowed, why = state.rate_limit(st, report.episode_id, now=now)  # MUTANT: not read again under the lock\n            if not allowed:",
+     'the state must be read again under the lock'),
+    ('cli.py', "            allowed, why = state.rate_limit(st, report.episode_id, now=now)\n            if not allowed:",
+     "            allowed, why = state.rate_limit(st, report.episode_id)  # MUTANT: not this run's clock\n            if not allowed:",
+     'the gap must be checked again under the lock, on the clock of the run'),
+    ('cli.py', "        finally:\n            state.release(lock)\n",
+     "        finally:\n            pass  # MUTANT: the lock is kept\n",
+     'the lock must be given back on every path'),
+    ('cli.py', "            if why != 'state_busy':\n",
+     "            if True:  # MUTANT: a held lock is reported as an error\n",
+     'a held lock is not an error to report'),
+    ('state.py', "        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+     "        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)  # MUTANT: a shared lock\n",
+     'the session lock must exclude a second run'),
+    ('state.py', "        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+     "        fcntl.flock(fd, fcntl.LOCK_EX)  # MUTANT: the lock waits\n",
+     'a run must never wait for the session lock'),
+    ('state.py', "        os.utime(fd)                # a lock in use is a fresh file, so prune() leaves it alone\n",
+     "        pass  # MUTANT: a lock in use keeps its old date\n",
+     'a lock that is in use must not be pruned'),
+    ('state.py', "os.O_CREAT | os.O_RDWR, 0o600)", "os.O_CREAT | os.O_RDWR, 0o666)  # MUTANT",
+     'the lock file must be private'),
+    ('cli.py', "            state.record_fire(st, report.episode_id, now=now)\n",
+     "            state.release(lock)  # MUTANT: given back before the firing is saved\n            state.record_fire(st, report.episode_id, now=now)\n",
+     'the lock must be kept until the firing is saved'),
+    ('state.py', "    except BlockingIOError:\n        _close(fd)\n        return None, 'state_busy'\n",
+     "    except BlockingIOError:\n        _close(fd)\n        return None, 'state_unwritable'  # MUTANT\n",
+     'a held lock must be told apart from a lock that cannot be made'),
+    ('state.py', "    if fcntl is None:\n        return NO_LOCK, ''\n",
+     "    if fcntl is None:\n        return None, 'state_unwritable'  # MUTANT: no fcntl means silence\n",
+     'without fcntl the engine must go on as before'),
+    ('state.py', "    except Exception:\n        _close(fd)\n        return None, 'state_unwritable'\n",
+     "    except OSError:  # MUTANT: only disk errors are caught\n        _close(fd)\n        return None, 'state_unwritable'\n",
+     'claim must answer, never raise'),
     ('state.py', "            pass\n        return False\n",
      "            pass\n        return True  # MUTANT: a failed save reports success\n",
      'a save that failed must say so'),
@@ -506,10 +544,19 @@ MUTANTS = [
 SANDBOX_HOME = None
 
 
+#: A suite that does not finish has not passed. Without a clock, a mutant that makes
+#: something wait would stop this tool instead of being caught by it.
+SUITE_SECONDS = 600
+
+
 def run(cwd):
     env = dict(os.environ, HOME=SANDBOX_HOME) if SANDBOX_HOME else None
-    p = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-t', 'tests'],
-                       cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env)
+    try:
+        p = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-t', 'tests'],
+                           cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env,
+                           timeout=SUITE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return False, ['the suite did not finish in %d seconds' % SUITE_SECONDS]
     return p.returncode == 0, (p.stderr or '').strip().splitlines()[-1:]
 
 

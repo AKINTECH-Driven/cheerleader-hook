@@ -13,6 +13,7 @@
 
 ## Checkpoint log
 <!-- One line per checkpoint: type(scope): summary · tests N/N · PASS|FAIL -->
+- C17 · fix(state): a session lock, taken without waiting, so that runs which start together give one intervention · tests 331/331 · PASS (three review rounds) · mutants 174/174
 - C16 · fix(state): a firing that cannot be recorded is not given: save reads the state back, and without that the hook stays silent and says why · tests 309/309 · PASS (three review rounds; the last wording corrections were not read again) · mutants 161/161
 - C15 · docs(readme): the opening says only what the code does, after three review rounds, no code change · tests 294/294 · PASS · mutants not run again
 - C14 · docs(readme): the status line names the project of the by-hand runs, theorem-b, on the owner's word · tests 294/294 · PASS · mutants not run again
@@ -715,3 +716,114 @@ buffer.
   change and was left alone.
 
 Final: 309/309 tests, **161/161 mutants caught**.
+
+### C17 · Runs that start together give one intervention, 2026-11-15
+C16 left one way past the limits open: hook runs released at the same instant on one session
+each read the state before any had written it, and each spoke. The owner asked for a lock.
+
+**The change.** `state.claim` takes a lock on the session with `fcntl.flock`, exclusive and
+without waiting, on an empty file next to the state file, and marks that file as just used.
+`cli.run` does what it did up to the point where it would speak. Then it claims the lock,
+reads the state again, applies the limits again, records, saves, and gives the lock back on
+every path. A run that finds the lock taken prints `{}` and, under `--explain`, shows
+`SILENT: state_busy`; that is not an error, and no error line is written to standard error.
+A lock file that cannot be made or locked is treated like a state that cannot be saved.
+Where Python has no `fcntl` nothing is locked and the engine goes on as before, so there the
+race remains.
+
+**What was run.** Eight copies of the hook script released at one instant on one session
+and one block, fifteen rounds, measured once: the published code went above one
+intervention in 12 rounds, the new code in none, with exactly one in every round. Sixteen
+copies, ten rounds: one in every round. With the state path blocked the new code still
+says nothing, and with a usable folder it still speaks once.
+
+**Review.** Four seats that were not the builder attacked a first version, and a second
+reader tried to refute each finding. The seat that tried to break it ran 2, 8 and 32 runs
+at once, with one event and with three, with two stuck transcripts and with staggered
+starts, ten rounds each: the published code went above one in eleven of those twelve
+settings, the new code gave exactly one in every round. With the lock held elsewhere for
+20 seconds a run came back in a fraction of a second. A directory, a
+pipe, a link to itself or an unreadable file at the lock path made it say nothing and never
+wait. It found no run that the old code let speak and the new code wrongly silences, and
+no open descriptor left behind after 300 runs. Twelve findings were confirmed, one of them
+by two seats, and none of them a way past the lock in normal use. These were acted on:
+
+- `prune` goes by a file's date, and the lock file kept the date it was made. More than
+  seven days into a session, a prune during the moment a run held the lock would have
+  removed the file, and a second run could then have taken a second lock on a new one. A
+  claim now marks the lock file as just used.
+- Nothing but the test with real processes noticed when the lock was given back before the
+  firing was saved, and that test notices only now and then. A test now asks for the lock
+  while the state is read again and while it is saved, and finds it taken both times.
+- A lock that waits made the suite wait with it. The tests that would wait now give up
+  after a few seconds, and `tools/mutate.py` gives each run of the suite ten minutes, after
+  which the mutant counts as caught.
+- A second `release` of the same lock closed whatever had been given that descriptor
+  number since. The lock is a small object now, and a second release does nothing.
+- An error under the lock, the lock file's mode and a state that cannot be put in place
+  while the lock is held had no test. They have one each.
+- The README said one run speaks where the lock guarantees at most one, left the lock file
+  out of the reasons for silence, and said the lock file is pruned like the state. This
+  entry said nothing goes to standard error on a held lock, where `--explain` writes its
+  diagnosis there. All four are corrected.
+
+**A second round.** Three more seats read the result. One released 8 and then 24 runs at
+once on the final build, ten rounds each: one intervention in every round. It reproduced
+the prune of a lock in use on the first version and found it closed, and with a pipe, a
+folder, a link to itself or an unreadable file at the lock path nothing waited. One
+applied the sixteen mutants that were added or moved, each by hand: all went red, and the
+lock that waits failed in under a minute where it used to stop the suite. One read the
+documents. Six findings were confirmed, and these were acted on:
+
+- A test that gives up on a run that is still waiting left that run behind, and once the
+  test gave the lock back the run went on and saved its state after the test had tidied
+  up, into the default state folder. That test now keeps the lock when the run has not
+  come back.
+- The test of the lock file's mode looked at the mode the caller's mask left, so the mutant
+  for it survived under a strict mask. It sets the mask aside now.
+- The limits were applied again under the lock, and only the one per block was tested
+  there. A test now plays the race with a different block, where only the gap can stop the
+  second run, and a mutant takes the run's own clock away.
+- This entry said that all the new tests fail against the code as it was, and the README
+  said the export's smoke test leaves an empty folder and counted five runs with survivors.
+  All three are corrected.
+
+**Tests.** Twenty-two new ones. Twelve on the lock: a run can take it; the file is empty
+and private; a second run finds it taken and does not wait; it is free again once given
+back; another session is not held up; a lock file that cannot be made; a session id that
+cannot be read; no `fcntl`; release taking whatever claim returned, twice; a hostile
+session id; a lock in use is not pruned; and an old lock file is. Ten on the hook: silence
+while another run holds the lock; the state read again under the lock, with the race played
+in order by a second run that speaks between this run's decision and its lock; the gap
+checked again under the lock, with that second run speaking about another block; the lock
+held while the state is read again and while it is saved; the lock given back when
+something under it raises; given back after it speaks and after a save that fails; a state
+that cannot be saved under the lock; a lock that cannot be taken; no `fcntl`; and eight
+hook processes released together, twice, giving one intervention each time. Run against
+the code as it was, twenty-one of them fail every time. The one with eight real processes
+fails in many runs and passes in the others, because the race does not happen every time.
+No existing test changed; two test files import one more helper.
+
+**Mutants.** Thirteen added: ignoring a held lock, not reading the state again under the
+lock, not using the run's own clock there, keeping the lock, giving it back before the
+firing is saved, reporting a held lock as an error, taking a shared lock, a lock that
+waits, a lock in use that keeps its old date, a lock file others can read, calling a held
+lock unwritable, going silent where there is no `fcntl`, and catching only disk errors in
+`claim`. Four mutants from C16 were anchored on lines that moved under the lock. In the
+first run after the move one of them no longer matched anything, one broke the file and was
+caught for that reason alone, and one, the silence that is not explained, survived: with
+the state folder blocked the lock now fails first, so nothing tested the reason given when
+the lock holds and the save fails. The four are anchored on the lines where they are now,
+and the new test with a folder in the state file's place catches the one that survived.
+
+**Found and not changed.**
+
+- A named pipe put where a session's state file belongs makes the hook wait, because `load`
+  opens it and nothing ever writes. The published code does the same. It takes someone
+  making that pipe by hand, and it is not in the README.
+- A claim takes the lock and then marks the lock file as just used. A prune that lands
+  between those two steps can still remove a lock file more than seven days old, and a
+  second run could then take a second lock on a new file. It needs a session idle for more
+  than seven days whose start and whose next speaking run fall at the same instant.
+
+Final: 331/331 tests, **174/174 mutants caught**.

@@ -1,16 +1,21 @@
 """Per-session firing state: what HORME has already said, and when.
 
 Lives outside the project, under ~/.claude/cheerleader/state/. Every function here is
-best-effort. load(), save(), rate_limit() and prune() never raise: a state file that
-cannot be read counts as empty, so that session starts again from zero, and a state that
-cannot be saved is reported by save() answering False, after which the caller gives no
-intervention. The hook around them exits 0 whatever happens here and never crashes the
-session it is supposed to be helping.
+best-effort. load(), save(), claim(), release(), rate_limit() and prune() never raise: a
+state file that cannot be read counts as empty, so that session starts again from zero,
+and a state that cannot be saved is reported by save() answering False, after which the
+caller gives no intervention. The hook around them exits 0 whatever happens here and
+never crashes the session it is supposed to be helping.
 """
 import json
 import os
 import re
 import time
+
+try:
+    import fcntl
+except ImportError:                 # no fcntl on this platform: there is no lock to take
+    fcntl = None
 
 from . import brand, rulebook
 
@@ -86,6 +91,72 @@ def save(session_id, data):
         except Exception:
             pass
         return False
+
+
+#: What claim() hands back where there is no fcntl. Nothing was locked.
+NO_LOCK = object()
+
+
+class _Held(object):
+    """A session lock that is held: the open descriptor, until release() takes it out."""
+    __slots__ = ('fd',)
+
+    def __init__(self, fd):
+        self.fd = fd
+
+
+def claim(session_id):
+    """Take the session's lock without waiting. Returns (lock, why), and never raises.
+
+    Two runs that start together would each read a state that has heard nothing, and each
+    would speak. So a run takes this lock before it reads the state for the last time,
+    and keeps it until its firing is saved.
+
+    - (lock, ''): the lock is held. Hand `lock` to release().
+    - (None, 'state_busy'): another run holds it. That run is deciding; this one says nothing.
+    - (None, 'state_unwritable'): the lock file could not be made or locked.
+    - (NO_LOCK, ''): this platform has no fcntl, so nothing was locked.
+    """
+    if fcntl is None:
+        return NO_LOCK, ''
+    fd = None
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        fd = os.open(_path(session_id) + '.lock', os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        _close(fd)
+        return None, 'state_busy'
+    except Exception:
+        _close(fd)
+        return None, 'state_unwritable'
+    try:
+        os.utime(fd)                # a lock in use is a fresh file, so prune() leaves it alone
+    except Exception:
+        pass
+    return _Held(fd), ''
+
+
+def release(lock):
+    """Give the lock back. Takes whatever claim() returned, and a second call does nothing."""
+    if not isinstance(lock, _Held):
+        return
+    fd, lock.fd = lock.fd, None
+    if fd is None:
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except Exception:
+        pass
+    _close(fd)
+
+
+def _close(fd):
+    try:
+        if fd is not None:
+            os.close(fd)
+    except Exception:
+        pass
 
 
 def record_fire(data, episode_id, now=None):

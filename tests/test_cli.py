@@ -6,8 +6,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
-from _ctx import fx
+from _ctx import fx, within
 import _samples as S
 from horme import cli, state
 
@@ -436,6 +437,213 @@ class TestSilenceWhenTheFiringCannotBeRecorded(CliCase):
         finally:
             os.close(write_end)
         self.assertEqual((proc.returncode, proc.stdout), (0, '{}'))
+
+
+class TestRunsThatStartTogether(CliCase):
+    """Found on 2026-11-15 while the fix above was reviewed: hook runs released at the same
+    instant on one session each read the state before any had written it, and each spoke.
+    A run now takes the session's lock and reads the state again under it."""
+
+    def test_it_says_nothing_while_another_run_holds_the_lock(self):
+        lock, why = state.claim('s-busy')
+        self.assertIsNotNone(lock, why)
+        err, came_back = io.StringIO(), False
+        try:
+            with contextlib.redirect_stderr(err):
+                code, out, explain = within(10, lambda: self.run_cli(payload(session='s-busy'), argv=['--explain']))
+            came_back = True
+        finally:
+            # A run that is still waiting is left without the lock for good. Given the lock
+            # now, it would go on, speak, and save its state after this test has tidied up.
+            if came_back:
+                state.release(lock)
+        self.assertEqual((code, json.loads(out)), (0, {}))
+        self.assertIn('SILENT: state_busy', '\n'.join(explain))
+        self.assertEqual(err.getvalue(), '', 'a held lock is not an error to report')
+        _c, out, _e = self.run_cli(payload(session='s-busy'))
+        self.assertIn('systemMessage', json.loads(out), 'it stayed silent after the lock was given back')
+
+    def test_it_reads_the_state_again_under_the_lock(self):
+        """The race, played in order: this run has read the state and decided to speak;
+        before it gets the lock another run speaks and saves; this run must see that."""
+        real_claim, other = cli.state.claim, []
+
+        def claim_after_another_run(session_id):
+            if not other:
+                cli.state.claim = real_claim
+                try:
+                    other.append(cli.run(payload(session='s-race'), [], now=1000.0)[1])
+                finally:
+                    cli.state.claim = claim_after_another_run
+            return real_claim(session_id)
+
+        cli.state.claim = claim_after_another_run
+        try:
+            code, out, explain = self.run_cli(payload(session='s-race'), argv=['--explain'], now=1000.0)
+        finally:
+            cli.state.claim = real_claim
+        self.assertIn('systemMessage', json.loads(other[0]), 'the sample is wrong: the other run must speak')
+        self.assertEqual((code, json.loads(out)), (0, {}), 'two runs spoke for one block')
+        self.assertIn('SILENT: max_per_episode', '\n'.join(explain))
+        self.assertEqual(state.load('s-race')['fired_total'], 1)
+        lock, why = state.claim('s-race')
+        state.release(lock)
+        self.assertIsNotNone(lock, 'the lock was kept after a run that stayed silent under it: %s' % why)
+
+    def test_the_gap_between_two_interventions_is_checked_again_under_the_lock(self):
+        """The same race with another block: the other run speaks about something else, so
+        the only limit left to stop this one is the gap, on this run's own clock."""
+        real_claim, other = cli.state.claim, []
+
+        def claim_after_another_run(session_id):
+            if not other:
+                cli.state.claim = real_claim
+                try:
+                    other.append(cli.run(payload(fixture='infeasible.jsonl', session='s-gap'), [], now=1000.0)[1])
+                finally:
+                    cli.state.claim = claim_after_another_run
+            return real_claim(session_id)
+
+        cli.state.claim = claim_after_another_run
+        try:
+            code, out, explain = self.run_cli(payload(session='s-gap'), argv=['--explain'], now=1001.0)
+        finally:
+            cli.state.claim = real_claim
+        self.assertIn('systemMessage', json.loads(other[0]), 'the sample is wrong: the other run must speak')
+        self.assertEqual((code, json.loads(out)), (0, {}), 'two runs spoke one second apart')
+        self.assertIn('SILENT: cooldown', '\n'.join(explain))
+
+    def test_the_lock_is_held_while_the_state_is_read_again_and_while_it_is_saved(self):
+        """Given back a moment too early, before the firing is saved, the lock leaves the
+        race open for a few milliseconds, and a test with real processes sees that only
+        now and then. So ask for the lock at each step and see whether it is free."""
+        real_load, real_save, seen = cli.state.load, cli.state.save, []
+
+        def free_or_not(session_id):
+            lock, why = within(5, lambda: state.claim(session_id))
+            state.release(lock)
+            return why or 'free'
+
+        def load(session_id):
+            seen.append(('load', free_or_not(session_id)))
+            return real_load(session_id)
+
+        def save(session_id, data):
+            seen.append(('save', free_or_not(session_id)))
+            return real_save(session_id, data)
+
+        cli.state.load, cli.state.save = load, save
+        try:
+            _c, out, _e = self.run_cli(payload(session='s-held'))
+        finally:
+            cli.state.load, cli.state.save = real_load, real_save
+        self.assertIn('systemMessage', json.loads(out))
+        self.assertEqual(seen, [('load', 'free'), ('load', 'state_busy'), ('save', 'state_busy')])
+
+    def test_the_lock_is_given_back_when_something_under_it_raises(self):
+        def fail(*_a, **_k):
+            raise RuntimeError('no')
+        real_save = cli.state.save
+        cli.state.save = fail
+        try:
+            code, out, _e = self.run_cli(payload(session='s-raised'))
+        finally:
+            cli.state.save = real_save
+        self.assertEqual((code, out), (0, '{}'))
+        lock, why = state.claim('s-raised')
+        state.release(lock)
+        self.assertIsNotNone(lock, 'the lock was kept after an error under it: %s' % why)
+
+    def test_the_lock_is_given_back_after_it_speaks_and_after_a_save_that_fails(self):
+        _c, out, _e = self.run_cli(payload(session='s-spoke'))
+        self.assertIn('systemMessage', json.loads(out))
+        real_save = cli.state.save
+        cli.state.save = lambda *_a, **_k: False
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                _c, out, _e = self.run_cli(payload(session='s-unsaved'))
+        finally:
+            cli.state.save = real_save
+        self.assertEqual(json.loads(out), {})
+        for session in ('s-spoke', 's-unsaved'):
+            lock, why = state.claim(session)
+            state.release(lock)
+            self.assertIsNotNone(lock, 'the lock on %s was kept: %s' % (session, why))
+
+    def test_a_state_that_cannot_be_saved_under_the_lock_keeps_it_silent_and_says_why(self):
+        """The lock can be taken and the state still cannot be put in place: there is a
+        folder where this session's state file belongs."""
+        os.makedirs(state._path('s-dir'))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, out, explain = self.run_cli(payload(session='s-dir'), argv=['--explain'])
+        self.assertEqual((code, json.loads(out)), (0, {}))
+        self.assertIn('SILENT: state_unwritable', '\n'.join(explain))
+        self.assertIn('state could not be saved', err.getvalue())
+        self.assertTrue(os.path.isdir(state._path('s-dir')), 'the folder in the way was removed')
+        lock, why = state.claim('s-dir')
+        state.release(lock)
+        self.assertIsNotNone(lock, 'the lock was kept after a save that failed: %s' % why)
+
+    def test_a_lock_that_cannot_be_taken_keeps_it_silent_and_says_so(self):
+        real_claim = cli.state.claim
+        cli.state.claim = lambda *_a, **_k: (None, 'state_unwritable')
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                code, out, explain = self.run_cli(payload(session='s-nolock'), argv=['--explain'])
+        finally:
+            cli.state.claim = real_claim
+        self.assertEqual((code, json.loads(out)), (0, {}))
+        self.assertIn('SILENT: state_unwritable', '\n'.join(explain))
+        self.assertIn('state could not be saved', err.getvalue())
+
+    def test_without_fcntl_it_speaks_once_as_before(self):
+        kept = cli.state.fcntl
+        cli.state.fcntl = None
+        try:
+            _c, first, _e = self.run_cli(payload(session='s-nofcntl'))
+            _c, second, _e = self.run_cli(payload(session='s-nofcntl'), now=10 ** 9)
+        finally:
+            cli.state.fcntl = kept
+        self.assertIn('systemMessage', json.loads(first))
+        self.assertEqual(json.loads(second), {})
+
+    def test_hook_processes_released_together_give_one_intervention(self):
+        """The real entry point, eight at once on one session, as separate processes."""
+        hook = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'hooks', cli.brand.HOOK_FILENAME)
+        child = ('import runpy, sys, time\n'
+                 'while time.time() < float(sys.argv[1]):\n'
+                 '    pass\n'
+                 'hook = sys.argv[2]\n'
+                 'sys.argv = [hook]\n'
+                 'runpy.run_path(hook, run_name="__main__")\n')
+        env = dict((k, v) for k, v in os.environ.items() if k not in cli.brand.ENV_DISABLE)
+        env['PYTHONDONTWRITEBYTECODE'] = '1'
+        raw = payload(event='Stop', session='s-together')
+        for round_no in range(2):
+            home = os.path.join(self.dir, 'home-%d' % round_no)
+            os.makedirs(home)
+            go = time.time() + 0.7
+            procs = [subprocess.Popen([sys.executable, '-c', child, repr(go), hook], stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                                      env=dict(env, HOME=home)) for _ in range(8)]
+            answers = []
+            try:
+                for proc in procs:          # every process has its input before the shared instant
+                    proc.stdin.write(raw)
+                    proc.stdin.close()
+                for proc in procs:          # an answer is far smaller than a pipe holds, so wait first
+                    self.assertEqual(proc.wait(timeout=60), 0)
+                    answers.append(proc.stdout.read())
+            finally:
+                for proc in procs:
+                    if proc.poll() is None:
+                        proc.kill()
+                    proc.stdout.close()
+            spoke = sum(1 for a in answers if 'systemMessage' in json.loads(a))
+            self.assertEqual(spoke, 1, 'round %d: %d of 8 runs spoke for one block' % (round_no + 1, spoke))
 
 
 class TestKillSwitch(CliCase):
