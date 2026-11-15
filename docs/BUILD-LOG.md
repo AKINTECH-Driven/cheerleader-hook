@@ -13,6 +13,7 @@
 
 ## Checkpoint log
 <!-- One line per checkpoint: type(scope): summary · tests N/N · PASS|FAIL -->
+- C14 · docs(readme): the status line names the project of the by-hand runs, theorem-b, on the owner's word · tests 294/294 · PASS · mutants not run again
 - C13 · docs(review): review before publication, nothing private found, the live-use statement supported by the records and reworded to say so, wordings corrected · tests 294/294 · PASS (six seats, each finding read a second time) · mutants not run again
 - C12 · docs(readme): the status line on live use corrected from the session records, no code change · tests 294/294 · PASS · mutants not run again
 - C11 · docs(release): the origin of the research brief stated, two attributions marked as unconfirmed · tests 294/294 · PASS · mutants 151/151
@@ -558,3 +559,11 @@ The wording changes made after the last seat's report were checked by the builde
 the code and the records, not read again by an independent seat.
 
 Final: 294/294 tests. One docstring and two documents changed, nothing the mutants act on.
+
+### C14 · The project is named, 2026-11-15
+The status line in the README spoke of "a Lean 4 proof project". The owner decided to name
+it: the three sessions were working sessions on theorem-b, which is public under the same
+organisation as this repository. The README now names and links it. The entries C12 and
+C13 above stay as they were written, before that decision. Nothing else changed.
+
+Final: 294/294 tests. One sentence in one document changed.
