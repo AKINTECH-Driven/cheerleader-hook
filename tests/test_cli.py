@@ -316,6 +316,128 @@ class TestRateLimiting(CliCase):
         self.assertEqual(state.load('s-quiet')['fired_total'], 0)
 
 
+class TestSilenceWhenTheFiringCannotBeRecorded(CliCase):
+    """Found on 2026-11-15: with a state folder that could not be written, every limit was
+    gone and the same block could get an intervention again on the next event. A firing
+    that cannot be recorded is now not given at all."""
+
+    def block_the_state(self):
+        blocked = os.path.join(self.dir, 'in-the-way')
+        with open(blocked, 'w') as fh:
+            fh.write('a file where the state folder should be')
+        state.STATE_DIR = blocked            # tearDown puts the original back
+
+    def test_it_says_nothing_when_the_state_cannot_be_saved(self):
+        self.block_the_state()
+        for i in range(3):
+            with contextlib.redirect_stderr(io.StringIO()):
+                code, out, _e = self.run_cli(payload(session='s-blocked'), now=1000.0 + i * 10 ** 6)
+            self.assertEqual((code, json.loads(out)), (0, {}),
+                             'run %d spoke with no way to remember it' % (i + 1))
+
+    def test_the_same_session_speaks_once_the_state_can_be_saved(self):
+        """The control for the test above: same sample, same session, a usable folder."""
+        _c, out, _e = self.run_cli(payload(session='s-blocked'))
+        self.assertIn('systemMessage', json.loads(out))
+
+    def test_explain_names_the_reason(self):
+        self.block_the_state()
+        with contextlib.redirect_stderr(io.StringIO()):
+            _c, _o, explain = self.run_cli(payload(session='s-blocked'), argv=['--explain'])
+        text = '\n'.join(explain)
+        self.assertIn('SILENT: state_unwritable', text)
+        self.assertNotIn('slot ', text, 'it listed the slots of a message it withheld')
+
+    def test_it_says_so_on_standard_error(self):
+        self.block_the_state()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.run_cli(payload(session='s-blocked'))
+        self.assertIn(cli.brand.LABEL, err.getvalue())
+        self.assertIn('state could not be saved', err.getvalue())
+        self.assertIn(state.STATE_DIR, err.getvalue())
+
+    def test_the_reason_is_named_even_when_there_is_no_standard_error(self):
+        """A hook can be started with standard error closed. The line then has nowhere to
+        go, and that must not turn the named reason into an internal error."""
+        self.block_the_state()
+        kept = sys.stderr
+        sys.stderr = None
+        try:
+            code, out, explain = self.run_cli(payload(session='s-blocked'), argv=['--explain'])
+            swapped = sys.stderr
+        finally:
+            sys.stderr = kept
+        if swapped is not None:
+            swapped.close()
+        self.assertEqual((code, out), (0, '{}'))
+        self.assertIn('SILENT: state_unwritable', '\n'.join(explain))
+
+    def test_a_save_that_does_not_answer_true_keeps_it_silent(self):
+        """None is what `save` answered before it reported anything. An answer that is not
+        exactly True is not a recorded firing."""
+        orig = cli.state.save
+        try:
+            for n, answer in enumerate((None, False, 0, 1, 'saved')):
+                cli.state.save = lambda *_a, _answer=answer, **_k: _answer
+                with contextlib.redirect_stderr(io.StringIO()):
+                    _c, out, _e = self.run_cli(payload(session='s-answer-%d' % n))
+                self.assertEqual(json.loads(out), {}, 'spoke on a save that answered %r' % (answer,))
+        finally:
+            cli.state.save = orig
+
+    def test_the_hook_script_says_nothing_under_a_home_where_state_cannot_be_kept(self):
+        """The same through the real entry point, started the way Claude Code starts it:
+        three times under a home where the state cannot be kept, and then twice under one
+        where it can. There the first run speaks and the second is silent."""
+        hook = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'hooks', cli.brand.HOOK_FILENAME)
+        under_home = os.path.relpath(cli.brand.STATE_DIR, os.path.expanduser('~'))
+        self.assertFalse(under_home.startswith('..'), 'the state folder is not under the home folder')
+        blocked_home, good_home = os.path.join(self.dir, 'home-blocked'), os.path.join(self.dir, 'home-good')
+        os.makedirs(os.path.dirname(os.path.join(blocked_home, under_home)))
+        os.makedirs(good_home)
+        with open(os.path.join(blocked_home, under_home), 'w') as fh:
+            fh.write('a file where the state folder should be')
+        env = dict((k, v) for k, v in os.environ.items() if k not in cli.brand.ENV_DISABLE)
+        env['PYTHONDONTWRITEBYTECODE'] = '1'
+        raw = payload(event='Stop', session='s-process')
+
+        def start(home):
+            return subprocess.run([sys.executable, hook], input=raw, capture_output=True, text=True,
+                                  env=dict(env, HOME=home), timeout=60)
+        for i in range(3):
+            proc = start(blocked_home)
+            self.assertEqual((proc.returncode, proc.stdout), (0, '{}'), 'run %d: %s' % (i + 1, proc.stderr[-300:]))
+            self.assertIn('state could not be saved', proc.stderr)
+        proc = start(good_home)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-300:])
+        self.assertIn('systemMessage', proc.stdout, 'the sample is wrong: the hook must speak on this session')
+        self.assertEqual(start(good_home).stdout, '{}', 'the same block spoke twice')
+
+    def test_the_line_on_standard_error_cannot_change_the_exit_status(self):
+        """Standard error is a pipe nobody reads any more. The line cannot be written; the
+        hook must still print {} and exit 0. Left in the buffer, the line fails again when
+        the interpreter exits and the status becomes 120."""
+        hook = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'hooks', cli.brand.HOOK_FILENAME)
+        under_home = os.path.relpath(cli.brand.STATE_DIR, os.path.expanduser('~'))
+        home = os.path.join(self.dir, 'home-blocked')
+        os.makedirs(os.path.dirname(os.path.join(home, under_home)))
+        with open(os.path.join(home, under_home), 'w') as fh:
+            fh.write('a file where the state folder should be')
+        env = dict((k, v) for k, v in os.environ.items() if k not in cli.brand.ENV_DISABLE)
+        env.update(HOME=home, PYTHONDONTWRITEBYTECODE='1')
+        read_end, write_end = os.pipe()
+        os.close(read_end)
+        try:
+            proc = subprocess.run([sys.executable, hook], input=payload(event='Stop', session='s-pipe'),
+                                  stdout=subprocess.PIPE, stderr=write_end, text=True, env=env, timeout=60)
+        finally:
+            os.close(write_end)
+        self.assertEqual((proc.returncode, proc.stdout), (0, '{}'))
+
+
 class TestKillSwitch(CliCase):
 
     def test_the_env_var_silences_it(self):
@@ -524,7 +646,10 @@ class TestSelfTest(CliCase):
 
     def test_it_fails_when_a_firing_is_not_remembered(self):
         orig = cli.state.save
-        cli.state.save = lambda *_a, **_k: None
+        # Answers True and writes nothing. Until 2026-11-15 this stub answered None, as
+        # `save` then did; a save that does not answer True now silences the first run,
+        # so a firing can only go unremembered behind a save that claims it worked.
+        cli.state.save = lambda *_a, **_k: True
         try:
             res = cli.selftest()
         finally:

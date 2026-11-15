@@ -13,6 +13,8 @@
 
 ## Checkpoint log
 <!-- One line per checkpoint: type(scope): summary · tests N/N · PASS|FAIL -->
+- C16 · fix(state): a firing that cannot be recorded is not given: save reads the state back, and without that the hook stays silent and says why · tests 309/309 · PASS (three review rounds; the last wording corrections were not read again) · mutants 161/161
+- C15 · docs(readme): the opening says only what the code does, after three review rounds, no code change · tests 294/294 · PASS · mutants not run again
 - C14 · docs(readme): the status line names the project of the by-hand runs, theorem-b, on the owner's word · tests 294/294 · PASS · mutants not run again
 - C13 · docs(review): review before publication, nothing private found, the live-use statement supported by the records and reworded to say so, wordings corrected · tests 294/294 · PASS (six seats, each finding read a second time) · mutants not run again
 - C12 · docs(readme): the status line on live use corrected from the session records, no code change · tests 294/294 · PASS · mutants not run again
@@ -614,3 +616,102 @@ sentence that pointed to where the limits are listed. That sentence was removed 
 reworded. The removal was checked by the builder, not read again by a seat.
 
 Final: 294/294 tests. Two paragraphs in one document changed, nothing the mutants act on.
+
+### C16 · A firing that cannot be recorded is not given, 2026-11-15
+C15 recorded that the limits failed open: `state.save` swallowed every error, so with a
+state folder that could not be written the engine kept no memory, and three runs on the
+same stuck transcript gave three interventions. The owner asked for that to be fixed.
+
+**The change.** `state.save` now writes the file, reads it back, and answers True only when
+the file holds the text it wrote. Any failure answers False, and it still never raises.
+`cli.run` gives the intervention only when that answer is exactly True. Otherwise it prints
+`{}`, puts one line on standard error and, under `--explain`, shows
+`SILENT: state_unwritable`. The order is record, save, read back, then speak, so a firing
+that was not recorded is not given.
+
+**What was run.** With the state path blocked by a file, and with a read-only state folder,
+three runs on the same stuck transcript gave three interventions before the change and none
+after it. With a usable folder the first run speaks and the next two are silent, before and
+after.
+
+**Review.** Four seats that were not the builder attacked the change (one by breaking the
+state in every way it could think of, one on the diff, one on the tests and mutants, one on
+the documents), and a second reader tried to refute each finding. Nine findings were
+confirmed, and these were acted on:
+
+- The line on standard error could change the exit status. When the reader of that pipe
+  has gone, the line stays in the buffer, the interpreter fails on it again as it exits, and
+  the status is 120, not 0. The line now goes through a helper that points standard error at
+  the null device when the write fails.
+- `save` compared the parsed values, which is stricter than the question it has to answer:
+  does the file hold what was written. A state holding a value that JSON hands back in
+  another type, or one that is not equal to itself, counted as not saved. The engine does
+  not build such a state, and the comparison is on the text now.
+- Nothing pinned that `save` never raises, or that a cleanup which itself fails stays
+  quiet. Both have a test and a mutant now.
+- The module docstring of `state.py` said a hook that cannot read its state stays quiet. It
+  does not: an unreadable state counts as empty. The docstring says so now, and the
+  wording "repeats on every event" became "can repeat on the next event", because a
+  message of its own that is still in the transcript window also silences it.
+
+**A second round.** Four more seats read the result. The one that obstructed the state
+(thirteen ways, four runs each) saw the old code speak on every run and the new code on
+none, and with 40 hand-damaged state files old and new gave the same answers. It found
+nothing. The others found wording: the module docstring said every function never raises,
+which `record_fire` can; two test docstrings still said "on every event"; the README said
+"it says nothing" where one line goes to standard error; and no test noticed if the helper
+caught only a failed write, which a hook started with no standard error would show as an
+internal error in place of the reason. Those are corrected, the last with a test and a
+mutant. Removing the helper's `flush` survives the suite: on this Python standard error is
+line-buffered, so the write itself already fails.
+
+**A third round.** Two seats read what changed after the second. They found three more
+points of wording: the README called the runs that start together "the exception" to the
+limits where an unreadable state file is a second one; the section on what it refuses to do
+still gave the session cap and the cooldown with no pointer to the limitations; and the
+helper's docstring said standard error is pointed at the null device where only
+`sys.stderr` is replaced. All three are corrected. Those last corrections were checked by
+the builder, not read again by a seat.
+
+**Tests.** Fifteen new ones. Seven on `save`: it reads back; the state path is a file; the
+file cannot be put in place and nothing is left behind; an older state is what reads back;
+a state that JSON cannot write; a cleanup that fails; and that the text is what is
+compared. Eight on the hook: three silent runs with the state blocked; the same session
+speaking when the folder is usable, as the control; the reason under `--explain`; the line
+on standard error; the reason when there is no standard error; a save that answers
+anything but True; the hook script as a process, three times under a home where state
+cannot be kept and then twice under one where it can; and the exit status when standard
+error cannot be written.
+
+**One existing test changed, and one mutant.** `test_it_fails_when_a_firing_is_not_remembered`
+replaced `save` with a stub that answered None, as `save` then did. A save that does not
+answer True now silences the first run, so the stub answers True and writes nothing: the
+self-test must still catch a firing that is not remembered. The mutant "firing not
+persisted" was anchored on the two lines that changed and is anchored on the new ones. Ten
+mutants were added: speaking whether or not the firing was recorded, taking any truthy
+answer, not naming the reason, not reading the file back, comparing parsed values, catching
+only disk errors in `save`, letting a failed cleanup escape, a failed save that reports
+success, catching only a failed write in the helper, and leaving the unwritten line in the
+buffer.
+
+**Found and not changed.**
+
+- Runs that start at the same moment can each speak. Nothing locks the state between
+  reading it and writing it. Eight copies of the hook released at one instant on one session
+  and one block, fifteen rounds, measured once (the counts change from run to run): the
+  published code went above one intervention in 11 rounds, the new code in 10. In two
+  rounds of the new code some runs withheld because their state did not read back (racing
+  runs share one temporary file name). It was there before this change and is in the
+  README's limitations now.
+- A state file that cannot be read is still treated as empty
+  (`test_corrupt_state_file_is_treated_as_empty_not_fatal` pins that), so a damaged file
+  starts the counts for that session again.
+- `install.py --doctor` runs the self-test with a temporary state folder and does not look
+  at the real one, so it does not report a state folder that cannot be written.
+- The two older lines that write to standard error, on a denylist trip, do not go through
+  the new helper.
+- `test_no_shape_of_sixty_thousand_characters_takes_a_third_of_a_second` measures wall-clock
+  time. A reviewer saw it fail once on a heavily loaded machine. It is older than this
+  change and was left alone.
+
+Final: 309/309 tests, **161/161 mutants caught**.

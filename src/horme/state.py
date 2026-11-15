@@ -1,8 +1,11 @@
 """Per-session firing state: what HORME has already said, and when.
 
 Lives outside the project, under ~/.claude/cheerleader/state/. Every function here is
-best-effort: a hook that cannot read its own state must still exit 0 and stay quiet,
-never crash the session it is supposed to be helping.
+best-effort. load(), save(), rate_limit() and prune() never raise: a state file that
+cannot be read counts as empty, so that session starts again from zero, and a state that
+cannot be saved is reported by save() answering False, after which the caller gives no
+intervention. The hook around them exits 0 whatever happens here and never crashes the
+session it is supposed to be helping.
 """
 import json
 import os
@@ -58,20 +61,31 @@ def load(session_id):
 
 
 def save(session_id, data):
-    """Atomic where possible; silent where not."""
+    """Write the state and read it back. True only when the file now holds the text
+    that was written.
+
+    Atomic where possible, and it never raises. A caller that gets anything but True
+    must not speak: a firing that was not recorded can repeat on the next event, with
+    no session cap, cooldown or per-block limit left to stop it.
+    """
+    tmp = ''
     try:
-        os.makedirs(STATE_DIR, exist_ok=True)
+        text = json.dumps(data)
         target = _path(session_id)
         tmp = target + '.tmp'
+        os.makedirs(STATE_DIR, exist_ok=True)
         with open(tmp, 'w', encoding='utf-8') as fh:
-            json.dump(data, fh)
+            fh.write(text)
         os.replace(tmp, target)
+        with open(target, encoding='utf-8') as fh:
+            return fh.read() == text
     except Exception:
         try:
-            if os.path.exists(target + '.tmp'):
-                os.remove(target + '.tmp')
+            if tmp and os.path.exists(tmp):
+                os.remove(tmp)
         except Exception:
             pass
+        return False
 
 
 def record_fire(data, episode_id, now=None):

@@ -76,6 +76,87 @@ class TestSessionState(unittest.TestCase):
         self.assertTrue(os.path.exists(new))
 
 
+class TestSaveSaysWhetherItWorked(unittest.TestCase):
+    """`save` stands between one intervention and a repeat on the next event. It used to
+    swallow its failures, so a state folder that could not be written left the hook with
+    no memory and no cap. Now it answers True only for a file that reads back."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix='horme-state-')
+        self._orig = state.STATE_DIR
+        state.STATE_DIR = os.path.join(self.dir, 'state')
+
+    def tearDown(self):
+        state.STATE_DIR = self._orig
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def fired(self, at=1000.0):
+        return state.record_fire(state.blank(), 'ep', now=at)
+
+    def test_it_answers_true_for_a_state_that_reads_back(self):
+        s = self.fired()
+        self.assertIs(state.save('sess-1', s), True)
+        self.assertEqual(state.load('sess-1'), s)
+
+    def test_it_answers_false_when_the_state_path_is_a_file(self):
+        with open(state.STATE_DIR, 'w') as fh:
+            fh.write('a file where the state folder should be')
+        self.assertIs(state.save('sess-1', self.fired()), False)
+
+    def test_it_answers_false_when_the_file_cannot_be_put_in_place(self):
+        def refuse(*_a, **_k):
+            raise OSError('no room')
+        orig = state.os.replace
+        state.os.replace = refuse
+        try:
+            answer = state.save('sess-1', self.fired())
+        finally:
+            state.os.replace = orig
+        self.assertIs(answer, False)
+        self.assertEqual(os.listdir(state.STATE_DIR), [], 'a failed save left a file behind')
+
+    def test_it_answers_false_when_an_older_state_is_what_reads_back(self):
+        """A write that seems to work and does not hold: the new file never replaces the
+        old one, so the next run would read the old counts."""
+        self.assertIs(state.save('sess-1', self.fired(at=1000.0)), True)
+        orig = state.os.replace
+        state.os.replace = lambda *_a, **_k: None
+        try:
+            answer = state.save('sess-1', self.fired(at=2000.0))
+        finally:
+            state.os.replace = orig
+        self.assertIs(answer, False)
+
+    def test_it_answers_false_and_does_not_raise_for_a_state_json_cannot_write(self):
+        """Not a failure of the disk: `save` must still answer, not raise."""
+        s = self.fired()
+        s['extra'] = {1, 2}
+        self.assertIs(state.save('sess-1', s), False)
+        left = os.listdir(state.STATE_DIR) if os.path.isdir(state.STATE_DIR) else []
+        self.assertEqual(left, [], 'a failed save left a file behind')
+
+    def test_it_answers_false_when_even_the_cleanup_fails(self):
+        def refuse(*_a, **_k):
+            raise OSError('no')
+        replace, remove = state.os.replace, state.os.remove
+        state.os.replace = state.os.remove = refuse
+        try:
+            answer = state.save('sess-1', self.fired())
+        finally:
+            state.os.replace, state.os.remove = replace, remove
+        self.assertIs(answer, False)
+
+    def test_what_is_compared_is_the_text_on_disk(self):
+        """A value that is not equal to itself, or that JSON hands back in another type,
+        is still a recorded firing when the file holds what was written. Comparing the
+        parsed values would call that not saved."""
+        for odd in (float('nan'), (1, 2)):
+            s = self.fired()
+            s['extra'] = odd
+            self.assertIs(state.save('sess-odd', s), True, 'not saved with %r in the state' % (odd,))
+            self.assertEqual(state.load('sess-odd')['fired_total'], 1)
+
+
 class TestRateLimits(unittest.TestCase):
 
     def test_a_fresh_session_may_speak(self):

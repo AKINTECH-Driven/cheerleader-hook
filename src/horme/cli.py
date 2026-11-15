@@ -263,6 +263,25 @@ def _explain_lines(pay, sig, report, iv, reason):
     return out
 
 
+def _say_on_stderr(line):
+    """One line on standard error that cannot change how the hook exits.
+
+    A line that cannot be written (the reader of the pipe has gone) stays in the buffer,
+    the interpreter fails on it again when it exits, and the exit status becomes 120. So
+    when there is no standard error, or the write or the flush fails, `sys.stderr` is
+    replaced for the rest of the process by a handle on the null device, if that can be
+    opened. The file descriptor itself is left alone.
+    """
+    try:
+        sys.stderr.write(line + '\n')
+        sys.stderr.flush()
+    except Exception:
+        try:
+            sys.stderr = open(os.devnull, 'w')
+        except Exception:
+            pass
+
+
 def run(raw_stdin, argv=None, now=None):
     """Return (exit_code, stdout_text, explain_lines). Never raises."""
     argv = list(argv or [])
@@ -333,7 +352,13 @@ def run(raw_stdin, argv=None, now=None):
             return 0, '{}', (_explain_lines(pay, sig, report, iv, reason) if explain else [])
 
         state.record_fire(st, report.episode_id, now=now)
-        state.save(pay.session_id, st)
+        if state.save(pay.session_id, st) is not True:
+            # The firing could not be recorded, so the next event would find a session
+            # that has heard nothing and could speak again. Say nothing instead.
+            reason = 'state_unwritable'
+            _say_on_stderr('%s state could not be saved, intervention withheld: %s'
+                           % (brand.LABEL, state.STATE_DIR))
+            return 0, '{}', (_explain_lines(pay, sig, report, None, reason) if explain else [])
         return 0, _emit(pay.event, iv), (_explain_lines(pay, sig, report, iv, '') if explain else [])
 
     except Exception as exc:                 # never take the session down with us

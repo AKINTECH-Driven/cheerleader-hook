@@ -95,8 +95,8 @@ or the section of the research brief it follows.
 - `denylist.json`: what it may never say · `hooks.json`: events and rate limits. Its `kill_switch` entry
   only describes the switch: the variable and the file name are fixed in `src/horme/brand.py`.
 
-Verify it end to end: `/usr/bin/python3 -m unittest discover -s tests -t tests` (298 tests; with no transcripts of your own the runner reports 295 and one skip) and
-`/usr/bin/python3 tools/mutate.py` (151 mutants, all must be caught).
+Verify it end to end: `/usr/bin/python3 -m unittest discover -s tests -t tests` (313 tests; with no transcripts of your own the runner reports 310 and one skip) and
+`/usr/bin/python3 tools/mutate.py` (161 mutants, all must be caught).
 These two commands and `tools/calibrate.py` need `tests/` and `tools/`, which the default skill export leaves out
 (`tools/export_skill.py --with-tests` keeps them).
 
