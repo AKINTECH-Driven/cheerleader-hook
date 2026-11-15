@@ -1,8 +1,8 @@
 # Cheerleader (HORME engine)
 
-A Claude Code skill and hook set that detects, from the session transcript alone, when Claude is stuck, and injects one calibrated intervention that ends in a concrete next step.
+A Claude Code skill and hook set that detects, from the session transcript alone, when Claude looks stuck, and may then return one intervention that names a next step.
 
-There is no model call anywhere inside it. The diagnosis, the thresholds and the phrase templates are fixed data, so the same session always yields the same intervention. That is deliberate: an encouragement layer that improvises is one that can be talked into saying whatever a stuck model wants to hear.
+There is no model call anywhere inside it. The signal patterns, the diagnosis rules, the thresholds and the phrase templates are fixed, so with the same code and rulebook the same transcript always gets the same diagnosis and, when it speaks, the same words. That is deliberate: an encouragement layer that improvises is one that can be talked into saying whatever a stuck model wants to hear. Whether it speaks also depends on what it has already said, and when, so a second run on the same transcript can stay silent.
 
 The skill is named `cheerleader`. The engine and its Python package are named `horme` (Ὁρμή, the daimon of impulse and effort: the setting-into-motion of an action).
 

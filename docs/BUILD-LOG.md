@@ -567,3 +567,50 @@ organisation as this repository. The README now names and links it. The entries 
 C13 above stay as they were written, before that decision. Nothing else changed.
 
 Final: 294/294 tests. One sentence in one document changed.
+
+### C15 · The opening says only what the code does, 2026-11-15
+A reading of the README's first two paragraphs against the code found wording that claimed
+more than the code does. The owner asked for it to be tightened. Three rounds of review
+followed, each by three seats that were not the builder (the code, the documents, a hostile
+reader), and the wording changed after each round.
+
+**What changed in the two paragraphs.**
+
+- "is stuck" is now "looks stuck". Detection is a set of proxies with thresholds from an
+  unlabelled corpus, and nothing here measures how often a stuck session is caught.
+- "injects one calibrated intervention that ends in a concrete next step" is now "may then
+  return one intervention that names a next step". Only the thresholds are calibrated. A
+  diagnosed block can still get silence: a verdict nearby, the caps, the denylist. The
+  stand-down message gives a direction, not a concrete step, and the sentence that carries
+  the step is not always the last one.
+- "The diagnosis, the thresholds and the phrase templates are fixed data" is now "The signal
+  patterns, the diagnosis rules, the thresholds and the phrase templates are fixed". The
+  signal patterns and the slot table are Python, not data files.
+- "the same session always yields the same intervention" is now two statements. With the
+  same code and rulebook the same transcript always gets the same diagnosis and, when it
+  speaks, the same words. Whether it speaks also depends on what it has already said, and
+  when, so a second run on the same transcript can stay silent.
+
+**The builder's own check.** Every transcript in `tests/fixtures` was run 16 times: four
+hash seeds, two events, two working directories, and a new session name and home folder
+each time. Each of the 9 fixtures gave one diagnosis, and the 3 that speak gave one text
+each, over 144 runs. A second run under a session name that had already spoken printed `{}`.
+
+**Found and not changed here.**
+
+- The limits fail open. `state.save` swallows every error and `state.load` returns a blank
+  state on any error, so when the state folder cannot be written the engine keeps no memory
+  between runs. With the state path blocked, three runs on the same stuck transcript gave
+  three interventions. The README states the limits without that condition, under "What
+  gets installed" and under "The four things it refuses to do". The opening does not state
+  them.
+- The body of SKILL.md and the first paragraphs of SPEC.md still say "fixed data" and that
+  the same session always gives the same intervention, and the frontmatter of SKILL.md still
+  says "calibrated" and "concrete next step". They were not part of this change.
+- The layout table in the README still describes `rulebook/` as "All knowledge as data".
+
+In the third round two seats passed the text. The third asked for another word in a closing
+sentence that pointed to where the limits are listed. That sentence was removed instead of
+reworded. The removal was checked by the builder, not read again by a seat.
+
+Final: 294/294 tests. Two paragraphs in one document changed, nothing the mutants act on.
